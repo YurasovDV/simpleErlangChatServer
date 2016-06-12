@@ -82,11 +82,21 @@ wrap_message(Text, SenderDescriptor, DateTime) ->
   Nick = SenderDescriptor#client.nick,
   format_time(DateTime, "[", "]") ++ " "
     ++ "(" ++ Nick ++ ")"
-    ++ "  " ++ Text.
+    ++ "  " ++ ellipsis(Text).
 
 format_time(DateTime, Left, Right) ->
   {_Date = {_Y, _Mon, _D}, _Time = {H, Min, _S}} = DateTime,
   Left ++ integer_to_list(H) ++ ":" ++ integer_to_list(Min) ++ Right.
+
+-spec ellipsis/1 ::(string()) -> string().
+ellipsis(OldText)->
+case string:len(OldText) > ?MESSAGE_MAX_LENGTH of 
+  false -> OldText;
+  _ ->
+      Truncated = string:substr(OldText, 1, ?MESSAGE_MAX_LENGTH),
+      string:concat(Truncated, ?ELLIPSIS)
+end.
+
 
 create_default_nick(Address, Port) ->
   %% TODO ipv6?
