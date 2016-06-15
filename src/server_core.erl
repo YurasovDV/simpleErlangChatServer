@@ -7,7 +7,7 @@
 -export([
   process_request/3,
   command_to_atom/1,
-send_last_messages/2
+  send_last_messages/2
 ]).
 
 -spec command_to_atom/1 :: (string()) -> atom().
@@ -17,37 +17,12 @@ command_to_atom("/send") -> send;
 command_to_atom("/set_nick") -> set_nick;
 command_to_atom("/poll_messages") -> poll_messages.
 
--spec(send_last_messages(State :: #state{}, ClientSock :: gen_tcp:socket()) -> ok).
-send_last_messages(State, ClientSock) ->
-MessageList = State#state.messages,
-
-LastN =  select_last_messages(MessageList),
-
-CountStr = io_lib:format("~p~n", [length(LastN)]),
-ok = gen_tcp:send(ClientSock, CountStr),
-
-ok = lists:foreach(
-fun(Msg) -> 
-	% io:format("sending msgs ~p~n", [Msg#message.text]),
-	TextToSend = io_lib:format("~p~n", [Msg#message.text]),
-	ok = gen_tcp:send(ClientSock, TextToSend)
-end, 
-LastN).
-
-% -spec calc_tail(Total :: non_negative_int()) -> {ShouldTakeMessages :: boolean(), StartFrom :: non_negative_int()}.
-select_last_messages(MessageList) ->
-
-  Total = length(MessageList),
-  % either last (LAST_MESSAGES_COUNT) messages or just all messages
-  Count = min(Total, ?LAST_MESSAGES_COUNT), 
-
-LastN =  lists:reverse(lists:sublist(MessageList, Count)),
-LastN.
-
-
 -spec(process_request(State :: #state{}, Socket :: gen_tcp:socket(), user_command()) -> #state{}).
 process_request(State, Socket, #command{action_kind = login}) ->
   Users = State#state.clientsOnlineDict,
+ case check_if_logged(Socket, Users) of
+  true -> State;
+false ->
   {ok, {Address, Port}} = inet:peername(Socket),
   Key = {Address, Port},
   Nick = create_default_nick(Address, Port),
@@ -56,24 +31,37 @@ process_request(State, Socket, #command{action_kind = login}) ->
   UsersUpdated = dict:store(Key, UserDescriptor, Users),
   StateUpdated = State#state{clientsOnlineDict = UsersUpdated},
   ok = send_last_messages(State, Socket),
-  StateUpdated;
+  StateUpdated
+end;
 
 process_request(State, Socket, #command{action_kind = send, text = Text}) ->
+  Users = State#state.clientsOnlineDict,
+  IsLogged = check_if_logged(Socket, Users),
+  case IsLogged of
+ 	true ->  
 
-  NewMessage = fill_message_desc(State, Text, Socket),
-  NewMessages = [NewMessage | State#state.messages],
-  State1 = State#state{messages = NewMessages},
-
-  ok = broadcast(State, NewMessage),
-  State1;
+		State1 = case validate_message(Text) of
+		    	ok ->
+				NewMessage = fill_message_desc(State, Text, Socket),
+				NewMessages = [NewMessage | State#state.messages],
+  				ok = broadcast(State, NewMessage),
+  				State#state{messages = NewMessages} ;
+			shouldKick ->
+				send_kick(Socket),
+				process_request(State, Socket, #command{action_kind = logout}) 
+		end,
+               State1;
+ 	false -> State
+end;
 
 
 process_request(State, Socket, #command{action_kind = set_nick, text = Text}) ->
 
   Users = State#state.clientsOnlineDict,
-  {ok, Key} = inet:peername(Socket),
-%%   Key = {Address, Port},
-%% TODO можно убрать лишний поиск
+
+ case check_if_logged(Socket, Users) of
+true -> 
+ {ok, Key} = inet:peername(Socket),
   DescriptorOld = dict:fetch(Key, Users),
   NewDescriptor = DescriptorOld#client{nick = Text},
 
@@ -81,9 +69,11 @@ process_request(State, Socket, #command{action_kind = set_nick, text = Text}) ->
 
   StateUpdated = State#state{clientsOnlineDict = UsersUpdated},
   StateUpdated;
+false -> State
+end;
 
-process_request(State, _Socket, #command{action_kind = poll_messages}) ->
-  %% TODO реализовать это
+process_request(State, Socket, #command{action_kind = poll_messages}) ->
+  ok = send_last_messages(State, Socket),
   State;
 
 process_request(State, Socket, #command{action_kind = logout}) ->
@@ -158,3 +148,63 @@ send_to(_Id = {Addr, Port}, Msg, State) ->
   Sock = Client#client.sock,
   TextToSend = io_lib:format("~p~n", [Msg#message.text]),
   ok = gen_tcp:send(Sock, TextToSend).
+
+-spec(send_last_messages(State :: #state{}, ClientSock :: gen_tcp:socket()) -> ok).
+send_last_messages(State, ClientSock) ->
+MessageList = State#state.messages,
+
+LastN =  select_last_messages(MessageList),
+
+CountStr = io_lib:format("~p~n", [length(LastN)]),
+ok = gen_tcp:send(ClientSock, CountStr),
+
+ok = lists:foreach(
+fun(Msg) -> 
+	% io:format("sending msgs ~p~n", [Msg#message.text]),
+	TextToSend = io_lib:format("~p~n", [Msg#message.text]),
+	ok = gen_tcp:send(ClientSock, TextToSend)
+end, 
+LastN).
+
+% -spec calc_tail(Total :: non_negative_int()) -> {ShouldTakeMessages :: boolean(), StartFrom :: non_negative_int()}.
+select_last_messages(MessageList) ->
+
+  Total = length(MessageList),
+  % either last (LAST_MESSAGES_COUNT) messages or just all messages
+  Count = min(Total, ?LAST_MESSAGES_COUNT), 
+
+LastN =  lists:reverse(lists:sublist(MessageList, Count)),
+LastN.
+
+
+check_if_logged(Socket, ClientsOnline) ->
+ {ok, {Address, Port}} = inet:peername(Socket),
+ dict:is_key({Address, Port}, ClientsOnline).
+
+send_kick(Socket) ->
+ok = gen_tcp:close(Socket).
+
+validate_message(Text) ->
+	init_table(),
+	Words = lists:map(fun(Word) -> string:to_lower(Word) end, string:tokens(Text, ",. ?!:;")),
+	case check_if_rude_words(Words) of
+		true -> shouldKick;
+		false -> ok
+	end.
+
+check_if_rude_words([]) -> false;
+
+check_if_rude_words([W | Rest]) -> 
+	case ets:lookup(rude_words_table, W) of
+		[] -> false or check_if_rude_words(Rest);
+		_List -> true
+	end.
+
+init_table() ->
+case ets:info(rude_words_table) of
+undefined ->
+TabId = ets:new(rude_words_table, [set, named_table, public]),
+% Words = sets:from_list([]),
+ets:insert(TabId, {"shit", true});
+_ -> ok
+end.
