@@ -6,7 +6,8 @@
 %% API
 -export([
   process_request/3,
-  command_to_atom/1
+  command_to_atom/1,
+send_last_messages/2
 ]).
 
 -spec command_to_atom/1 :: (string()) -> atom().
@@ -16,6 +17,32 @@ command_to_atom("/send") -> send;
 command_to_atom("/set_nick") -> set_nick;
 command_to_atom("/poll_messages") -> poll_messages.
 
+-spec(send_last_messages(State :: #state{}, ClientSock :: gen_tcp:socket()) -> ok).
+send_last_messages(State, ClientSock) ->
+MessageList = State#state.messages,
+
+LastN =  select_last_messages(MessageList),
+
+CountStr = io_lib:format("~p~n", [length(LastN)]),
+ok = gen_tcp:send(ClientSock, CountStr),
+
+ok = lists:foreach(
+fun(Msg) -> 
+	% io:format("sending msgs ~p~n", [Msg#message.text]),
+	TextToSend = io_lib:format("~p~n", [Msg#message.text]),
+	ok = gen_tcp:send(ClientSock, TextToSend)
+end, 
+LastN).
+
+% -spec calc_tail(Total :: non_negative_int()) -> {ShouldTakeMessages :: boolean(), StartFrom :: non_negative_int()}.
+select_last_messages(MessageList) ->
+
+  Total = length(MessageList),
+  % either last (LAST_MESSAGES_COUNT) messages or just all messages
+  Count = min(Total, ?LAST_MESSAGES_COUNT), 
+
+LastN =  lists:reverse(lists:sublist(MessageList, Count)),
+LastN.
 
 
 -spec(process_request(State :: #state{}, Socket :: gen_tcp:socket(), user_command()) -> #state{}).
@@ -28,7 +55,7 @@ process_request(State, Socket, #command{action_kind = login}) ->
 
   UsersUpdated = dict:store(Key, UserDescriptor, Users),
   StateUpdated = State#state{clientsOnlineDict = UsersUpdated},
-  gen_tcp:send(Socket, <<"login successful">>),
+  ok = send_last_messages(State, Socket),
   StateUpdated;
 
 process_request(State, Socket, #command{action_kind = send, text = Text}) ->
@@ -52,8 +79,6 @@ process_request(State, Socket, #command{action_kind = set_nick, text = Text}) ->
 
   UsersUpdated = dict:store(Key, NewDescriptor, Users),
 
-  Check = dict:fetch(Key, UsersUpdated),
-
   StateUpdated = State#state{clientsOnlineDict = UsersUpdated},
   StateUpdated;
 
@@ -63,8 +88,12 @@ process_request(State, _Socket, #command{action_kind = poll_messages}) ->
 
 process_request(State, Socket, #command{action_kind = logout}) ->
   %% Hooray, bruteforce!
-  Filtered = dict:filter(fun(_Key, Value) -> Value /= Socket end, State#state.clientsOnlineDict),
-  ClientsUpdated = Filtered,
+Filtered = dict:filter(
+fun(_Key, Value) -> 
+       Value#client.sock /= Socket end, 
+State#state.clientsOnlineDict),
+
+ClientsUpdated = Filtered,
   State1 = State#state{clientsOnlineDict = ClientsUpdated},
   State1.
 
@@ -115,13 +144,17 @@ broadcast(State, Msg) ->
   AllClients = dict:fetch_keys(State#state.clientsOnlineDict),
 
 
-  OnlineIds = lists:filter(
-    fun({Addr, Port}) -> (Addr /= SenderAddress) or (Port /= SenderPort) end,
-    AllClients),
-
-  ok = lists:foreach(fun(Id) -> send_to(Id, Msg, State) end, OnlineIds).
-
+   ok = lists:foreach(fun(Id = {Addr, Port}) ->
+	if 
+ 	  (Addr /= SenderAddress) or (Port /= SenderPort) 
+ 		-> send_to(Id, Msg, State);
+ 	  true -> ok
+ 	end
+  end, 
+ AllClients).
+ 
 send_to(_Id = {Addr, Port}, Msg, State) ->
   Client = dict:fetch({Addr, Port}, State#state.clientsOnlineDict),
   Sock = Client#client.sock,
-  ok = gen_tcp:send(Sock, Msg#message.text).
+  TextToSend = io_lib:format("~p~n", [Msg#message.text]),
+  ok = gen_tcp:send(Sock, TextToSend).
