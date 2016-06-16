@@ -183,7 +183,7 @@ check_if_logged(Socket, ClientsOnline) ->
  dict:is_key({Address, Port}, ClientsOnline).
 
 send_kick(Socket) ->
-ok = gen_tcp:send(io_lib:format("You were kicked~n", [])),
+ok = gen_tcp:send(Socket, io_lib:format("You were kicked~n", [])),
 ok = gen_tcp:close(Socket).
 
 validate_message(Text) ->
@@ -212,6 +212,7 @@ init() ->
 			random:seed(erlang:timestamp()),
 			TabId = ets:new(rude_words_table, [set, named_table, public]),
 			% Words = sets:from_list([]),
-			ets:insert(TabId, {"shit", true});
+			ets:insert(TabId, {"shit", true}),
+			ok;
 		_ -> ok
 	end.

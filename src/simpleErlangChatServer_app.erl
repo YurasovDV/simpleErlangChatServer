@@ -15,8 +15,9 @@
 %%====================================================================
 
 start(_StartType, _StartArgs) ->
-  gen_server:start(request_handler, [1234], []),
-  receive
+  chat_server_sup:start_link()
+%  gen_server:start(request_handler, [1234], []),
+  ,receive
     X -> error(X)
   end    
 .

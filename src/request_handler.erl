@@ -22,11 +22,13 @@ stop() ->
   gen_server:cast(?NAME, stop).
 
 init(Args) ->
+
   Port = hd(Args),
   %% data sent from socket right in the mailbox
   {ok, Sock} = gen_tcp:listen(Port, [{active, true}]),
-  server_core:init_table(),
+  ok = server_core:init(),
   Timeout = 0,
+
   {ok,
     #state
     {
@@ -39,8 +41,12 @@ init(Args) ->
 
 
 accept_client(State, Pid) ->
-  {ok, AcceptedSock} = gen_tcp:accept(State#state.listeningSocket),
-  ok = gen_tcp:controlling_process(AcceptedSock, Pid).
+Accept = gen_tcp:accept(State#state.listeningSocket),
+case Accept of 
+  {ok, AcceptedSock} ->  ok = gen_tcp:controlling_process(AcceptedSock, Pid);
+  {error, closed} -> error(closed)
+end
+.
 
 handle_info(timeout, State) ->
   spawn(?MODULE, accept_client, [State, self()]),
@@ -96,7 +102,7 @@ handle_cast(stop, State) ->
   {stop, normal, State}.
 
 
-terminate(_Reason, _State) ->
+terminate(Reason, _State) ->
   ok.
 
 code_change(_OldVsn, State, _Extra) ->
