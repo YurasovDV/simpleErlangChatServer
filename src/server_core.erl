@@ -7,7 +7,8 @@
 -export([
   process_request/3,
   command_to_atom/1,
-  send_last_messages/2
+  send_last_messages/2,
+  init/0
 ]).
 
 -spec command_to_atom/1 :: (string()) -> atom().
@@ -182,13 +183,18 @@ check_if_logged(Socket, ClientsOnline) ->
  dict:is_key({Address, Port}, ClientsOnline).
 
 send_kick(Socket) ->
+ok = gen_tcp:send(io_lib:format("You were kicked~n", [])),
 ok = gen_tcp:close(Socket).
 
 validate_message(Text) ->
-	init_table(),
+	init(),
 	Words = lists:map(fun(Word) -> string:to_lower(Word) end, string:tokens(Text, ",. ?!:;")),
 	case check_if_rude_words(Words) of
-		true -> shouldKick;
+		true ->
+			 case random:uniform(10) * 10 =< ?RUDE_WORDS_KICK_CHANCE of
+				true -> shouldKick;
+				_ -> ok
+			 end;
 		false -> ok
 	end.
 
@@ -200,11 +206,12 @@ check_if_rude_words([W | Rest]) ->
 		_List -> true
 	end.
 
-init_table() ->
-case ets:info(rude_words_table) of
-undefined ->
-TabId = ets:new(rude_words_table, [set, named_table, public]),
-% Words = sets:from_list([]),
-ets:insert(TabId, {"shit", true});
-_ -> ok
-end.
+init() ->
+	case ets:info(rude_words_table) of
+		undefined ->
+			random:seed(erlang:timestamp()),
+			TabId = ets:new(rude_words_table, [set, named_table, public]),
+			% Words = sets:from_list([]),
+			ets:insert(TabId, {"shit", true});
+		_ -> ok
+	end.

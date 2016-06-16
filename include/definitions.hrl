@@ -35,3 +35,7 @@
 -define(ELLIPSIS, "[cut. message too long]").
 
 -define(LAST_MESSAGES_COUNT, 5).
+
+% user would be kicked for inappropriate lexic with RUDE_WORDS_KICK_CHANCE / 100 probability
+-define(RUDE_WORDS_KICK_CHANCE, 10).
+  

@@ -25,7 +25,7 @@ init(Args) ->
   Port = hd(Args),
   %% data sent from socket right in the mailbox
   {ok, Sock} = gen_tcp:listen(Port, [{active, true}]),
-  ok = start_db(),
+  server_core:init_table(),
   Timeout = 0,
   {ok,
     #state
@@ -91,13 +91,6 @@ debug_print(Socket, RawData) ->
 
 handle_call(_Request, _From, State) ->
   {reply, ok, State}.
-
-
-start_db() ->
-%%   db_manager:start_link(),
-%%   mnesia:start(),
-  ok.
-
 
 handle_cast(stop, State) ->
   {stop, normal, State}.
