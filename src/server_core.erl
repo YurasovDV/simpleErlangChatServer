@@ -90,7 +90,7 @@ ClientsUpdated = Filtered,
   State1 = State#state{clientsOnlineDict = ClientsUpdated},
   State1.
 
--spec fill_message_desc(#state{}, string(), port()) -> #message{text::nonempty_string(),sentFrom::{{byte(),byte(),byte(),byte()},non_neg_integer()},sent_when::any()}.
+-spec fill_message_desc(#state{}, string(), port()) -> #message{text::nonempty_string(),sentFrom::{{byte(),byte(),byte(),byte()},non_neg_integer()}}.
 fill_message_desc(State, Text, Socket) ->
   {ok, Key = {Address, Port}} = inet:peername(Socket),
   SenderDescriptor = dict:fetch(Key, State#state.clientsOnlineDict),
@@ -178,7 +178,7 @@ end,
 LastN).
 
 % -spec calc_tail(Total :: non_negative_int()) -> {ShouldTakeMessages :: boolean(), StartFrom :: non_negative_int()}.
--spec select_last_messages([#message{text::'undefined' | [any()],sentFrom::'undefined' | {_,_},sent_when::'undefined' | {_,_}}]) -> [any()].
+-spec select_last_messages([#message{}]) -> [#message{}].
 select_last_messages(MessageList) ->
 
   Total = length(MessageList),

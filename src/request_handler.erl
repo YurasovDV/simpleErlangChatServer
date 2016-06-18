@@ -43,7 +43,7 @@ init(Args) ->
     Timeout}.
 
 
--spec accept_client(#state{clientsOnlineDict::'undefined' | dict:dict({_,_},#client{nick::'undefined' | string(),sock::'undefined' | port()}),listeningSocket::port(),port::'undefined' | integer(),messages::'undefined' | [#message{text::'undefined' | [any()],sentFrom::'undefined' | {_,_},sent_when::'undefined' | {_,_}}]},pid()) -> 'ok'.
+-spec accept_client(#state{}, pid()) -> ok.
 accept_client(State, Pid) ->
 Accept = gen_tcp:accept(State#state.listeningSocket),
 case Accept of 
