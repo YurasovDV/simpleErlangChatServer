@@ -12,6 +12,7 @@
 ]).
 
 -spec command_to_atom/1 :: (string()) -> atom().
+
 command_to_atom("/login") -> login;
 command_to_atom("/logout") -> logout;
 command_to_atom("/send") -> send;
@@ -19,6 +20,7 @@ command_to_atom("/set_nick") -> set_nick;
 command_to_atom("/poll_messages") -> poll_messages.
 
 -spec(process_request(State :: #state{}, Socket :: gen_tcp:socket(), user_command()) -> #state{}).
+
 process_request(State, Socket, #command{action_kind = login}) ->
   Users = State#state.clientsOnlineDict,
  case check_if_logged(Socket, Users) of
@@ -88,6 +90,7 @@ ClientsUpdated = Filtered,
   State1 = State#state{clientsOnlineDict = ClientsUpdated},
   State1.
 
+-spec fill_message_desc(#state{}, string(), port()) -> #message{text::nonempty_string(),sentFrom::{{byte(),byte(),byte(),byte()},non_neg_integer()},sent_when::any()}.
 fill_message_desc(State, Text, Socket) ->
   {ok, Key = {Address, Port}} = inet:peername(Socket),
   SenderDescriptor = dict:fetch(Key, State#state.clientsOnlineDict),
@@ -98,17 +101,20 @@ fill_message_desc(State, Text, Socket) ->
 
 
 -spec wrap_message/3 :: (string(), #client{}, {{integer(), integer(), integer()}, {integer(), integer(), integer()}}) -> string().
+
 wrap_message(Text, SenderDescriptor, DateTime) ->
   Nick = SenderDescriptor#client.nick,
   format_time(DateTime, "[", "]") ++ " "
     ++ "(" ++ Nick ++ ")"
     ++ "  " ++ ellipsis(Text).
 
+-spec format_time({{byte(), byte(), byte()}, {byte(), byte(), byte()}}, string(), string()) -> nonempty_string().
 format_time(DateTime, Left, Right) ->
   {_Date = {_Y, _Mon, _D}, _Time = {H, Min, _S}} = DateTime,
   Left ++ integer_to_list(H) ++ ":" ++ integer_to_list(Min) ++ Right.
 
 -spec ellipsis/1 ::(string()) -> string().
+
 ellipsis(OldText)->
 case string:len(OldText) > ?MESSAGE_MAX_LENGTH of 
   false -> OldText;
@@ -118,6 +124,7 @@ case string:len(OldText) > ?MESSAGE_MAX_LENGTH of
 end.
 
 
+-spec create_default_nick({byte(),byte(),byte(),byte()},non_neg_integer()) -> nonempty_string().
 create_default_nick(Address, Port) ->
   %% TODO ipv6?
   {A1, A2, A3, A4} = Address,
@@ -129,6 +136,7 @@ create_default_nick(Address, Port) ->
   Nick.
 
 -spec broadcast/2 :: (#state{}, message()) -> ok.
+
 broadcast(State, Msg) ->
   {SenderAddress, SenderPort} = Msg#message.sentFrom,
 
@@ -144,6 +152,7 @@ broadcast(State, Msg) ->
   end, 
  AllClients).
  
+-spec send_to({{byte(), byte(), byte(), byte()},non_neg_integer},#message{},#state{}) -> ok.
 send_to(_Id = {Addr, Port}, Msg, State) ->
   Client = dict:fetch({Addr, Port}, State#state.clientsOnlineDict),
   Sock = Client#client.sock,
@@ -151,6 +160,7 @@ send_to(_Id = {Addr, Port}, Msg, State) ->
   ok = gen_tcp:send(Sock, TextToSend).
 
 -spec(send_last_messages(State :: #state{}, ClientSock :: gen_tcp:socket()) -> ok).
+
 send_last_messages(State, ClientSock) ->
 MessageList = State#state.messages,
 
@@ -168,6 +178,7 @@ end,
 LastN).
 
 % -spec calc_tail(Total :: non_negative_int()) -> {ShouldTakeMessages :: boolean(), StartFrom :: non_negative_int()}.
+-spec select_last_messages([#message{text::'undefined' | [any()],sentFrom::'undefined' | {_,_},sent_when::'undefined' | {_,_}}]) -> [any()].
 select_last_messages(MessageList) ->
 
   Total = length(MessageList),
@@ -178,14 +189,17 @@ LastN =  lists:reverse(lists:sublist(MessageList, Count)),
 LastN.
 
 
+-spec check_if_logged(port(),dict:dict(_,_)) -> boolean().
 check_if_logged(Socket, ClientsOnline) ->
  {ok, {Address, Port}} = inet:peername(Socket),
  dict:is_key({Address, Port}, ClientsOnline).
 
+-spec send_kick(port()) -> 'ok'.
 send_kick(Socket) ->
 ok = gen_tcp:send(Socket, io_lib:format("You were kicked~n", [])),
 ok = gen_tcp:close(Socket).
 
+-spec validate_message(string()) -> 'ok' | 'shouldKick'.
 validate_message(Text) ->
 	init(),
 	Words = lists:map(fun(Word) -> string:to_lower(Word) end, string:tokens(Text, ",. ?!:;")),
@@ -198,6 +212,7 @@ validate_message(Text) ->
 		false -> ok
 	end.
 
+-spec check_if_rude_words([[byte()] | char()]) -> boolean().
 check_if_rude_words([]) -> false;
 
 check_if_rude_words([W | Rest]) -> 
@@ -206,6 +221,7 @@ check_if_rude_words([W | Rest]) ->
 		_List -> true
 	end.
 
+-spec init() -> 'ok'.
 init() ->
 	case ets:info(rude_words_table) of
 		undefined ->

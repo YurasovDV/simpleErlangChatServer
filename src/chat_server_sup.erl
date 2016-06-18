@@ -4,11 +4,13 @@
 
 -export([init/1, start_link/0]).
 
+-spec start_link() -> 'ignore' | {'error',_} | {'ok',pid()}.
 start_link() ->
 	Args = [],
 	%			module with init/1
 	supervisor:start_link(chat_server_sup, Args).
 
+-spec init(_) -> {'ok',{#{},[#{},...]}}.
 init(_Args) ->
 	SupFlags = #{startegy => one_for_one, 
 			intensity => 100,
